@@ -8,8 +8,9 @@ require "shellwords"
 
 # see http://instagram.com/developer/authentication/ to get your access token
 
+stored_token = File.open(".access_token", "rb").read
 username = ARGV.fetch(0, '<DEFAULT_USERNAME>')
-access_token = ARGV.fetch(1, '<DEFAULT_ACCESS_TOKEN>')
+access_token = ARGV.fetch(1, stored_token)
 
 class PhotoFetcher  
 	def initialize(username, access_token)  
@@ -43,33 +44,30 @@ class PhotoFetcher
 		if next_endpoint
 			fetch_media(next_endpoint)
 		else
-			save_media_assets
+			puts "fetched all media"
+			generate_html
 		end
 	end
 
-	def save_media_assets
-		photo_count = @all_media.count
-
+	def generate_html
+		puts "generating html"
 		sorted_media = @all_media.sort { |a, b| b.like_count <=> a.like_count }
 
 		parent_dir = 'media'
 		FileUtils.mkdir(parent_dir) if not File.directory?(parent_dir)
-
-		dir_name = parent_dir + '/' + @username
-		FileUtils.rm_rf(dir_name)
-		FileUtils.mkdir(dir_name)
 		
-		sorted_media.each_with_index do |media, index|
-			begin
-				file_name = dir_name + '/' + media.file_name[0, 100]
-				File.open(file_name, 'wb') do |output_file|
-					output_file.write open(media.url).read 
-				end
-				puts "fetched photo #{index + 1} of #{photo_count}"
-			rescue
-				puts "could not download media #{media.url}"
-			end
+		html = ''
+		sorted_media.each do |media|
+			html += media.html_tag
 		end
+
+		html_file_name = parent_dir + '/' + @username + '.html'
+		FileUtils.touch(html_file_name)
+		File.open(html_file_name, 'w') do |file|
+			file.write(html)
+		end
+
+		`open #{html_file_name}`
 	end
 
 	def response_blob(endpoint)
@@ -94,6 +92,9 @@ end
 class InstagramMedia  
 	def initialize(data)  
 		@photo_url = data["images"]["standard_resolution"]["url"]
+		@width = data["images"]["standard_resolution"]["width"]
+		@height = data["images"]["standard_resolution"]["height"]
+		@link = data["link"]
 		@video_url = data["videos"] != nil ? data["videos"]["standard_resolution"] : nil
 		@like_count = data["likes"]["count"]
 	end
@@ -103,11 +104,23 @@ class InstagramMedia
 	end
 
 	def url
-		(@photo_url != nil) ? @photo_url : @video_url
+		is_photo ? @photo_url : @video_url
+	end
+
+	def is_photo
+		@photo_url != nil
+	end
+
+	def type
+		is_photo ? 'photo' : 'video'
 	end
 
 	def file_name
 		@like_count.to_s.rjust(6, "0") + ' likes   ' + URI(url).path.split('/').last
+	end
+
+	def html_tag
+		"<img src=\"" + self.url + "\" height=\"" + @height.to_s + "\" width=\"" + @height.to_s + "\" instagram-link=\"" + @link + "\"></img>\n"
 	end
 end
 
