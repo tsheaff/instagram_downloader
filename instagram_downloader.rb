@@ -120,7 +120,9 @@ class InstagramMedia
 	end
 
 	def html_tag
-		"<img src=\"" + self.url + "\" height=\"" + @height.to_s + "\" width=\"" + @height.to_s + "\" instagram-link=\"" + @link + "\"></img>\n"
+		"<a href=\"" + @link + "\" target=\"_blank\">\n" +
+		"    <img src=\"" + self.url + "\" height=\"" + @height.to_s + "\" width=\"" + @height.to_s + "\"></img>\n" +
+		"</a>"	
 	end
 end
 
