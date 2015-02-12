@@ -6,16 +6,11 @@ require "open-uri"
 require "fileutils"
 require "shellwords"
 
-# see http://instagram.com/developer/authentication/ to get your access token
-
-stored_token = File.open(".access_token", "rb").read
-username = ARGV.fetch(0, '<DEFAULT_USERNAME>')
-access_token = ARGV.fetch(1, stored_token)
-
 class PhotoFetcher  
-	def initialize(username, access_token)  
+	def initialize(username, access_token, only_video)
 		@username = username
 		@access_token = access_token
+		@only_video = only_video
 
 		@all_media = []
 		@user_id = ''
@@ -52,16 +47,20 @@ class PhotoFetcher
 	def generate_html
 		puts "generating html"
 		sorted_media = @all_media.sort { |a, b| b.like_count <=> a.like_count }
+		sorted_media = sorted_media.select { |a| !@only_video || !a.is_photo }
 
 		parent_dir = 'media'
 		FileUtils.mkdir(parent_dir) if not File.directory?(parent_dir)
 		
 		html = ''
+		javascript = ''
 		sorted_media.each do |media|
-			html += media.html_tag
+			html += media.html
+			javascript += media.javascript
 		end
+		html += "<script>\n" + javascript + "\n</script>"
 
-		html_file_name = parent_dir + '/' + @username + '.html'
+		html_file_name = parent_dir + '/' + @username + (@only_video ? '-videos' : '') + '.html'
 		FileUtils.touch(html_file_name)
 		File.open(html_file_name, 'w') do |file|
 			file.write(html)
@@ -90,12 +89,21 @@ end
 
 
 class InstagramMedia  
-	def initialize(data)  
-		@photo_url = data["images"]["standard_resolution"]["url"]
-		@width = data["images"]["standard_resolution"]["width"]
-		@height = data["images"]["standard_resolution"]["height"]
+	def initialize(data)
+		video_info = data["videos"] != nil ? data["videos"]["standard_resolution"] : nil
+		photo_info = data["images"]["standard_resolution"]
+		@is_photo = (video_info == nil)
+		@media_info = @is_photo ? photo_info : video_info
+
+		@url = @media_info["url"]
+		@width = @media_info["width"]
+		@height = @media_info["height"]
+
+		@url.sub!('scontent-a.cdninstagram', 'scontent-a-sjc.cdninstagram')
+		@url.sub!('scontent-b.cdninstagram', 'scontent-b-sjc.cdninstagram')
+		@url.sub!('scontent-c.cdninstagram', 'scontent-c-sjc.cdninstagram')
+
 		@link = data["link"]
-		@video_url = data["videos"] != nil ? data["videos"]["standard_resolution"] : nil
 		@like_count = data["likes"]["count"]
 	end
 
@@ -103,32 +111,63 @@ class InstagramMedia
 		@like_count
 	end
 
-	def url
-		is_photo ? @photo_url : @video_url
-	end
-
 	def is_photo
-		@photo_url != nil
+		@is_photo
 	end
 
-	def type
-		is_photo ? 'photo' : 'video'
-	end
-
-	def file_name
-		@like_count.to_s.rjust(6, "0") + ' likes   ' + URI(url).path.split('/').last
+	def unique_id
+		URI(@url).path.split('/').last.split('.').first
 	end
 
 	def html_tag
-		"<a href=\"" + @link + "\" target=\"_blank\">\n" +
-		"    <img src=\"" + self.url + "\" height=\"" + @height.to_s + "\" width=\"" + @height.to_s + "\"></img>\n" +
-		"</a>"	
+		@is_photo ? "img" : "video"
+	end
+
+	def html_video
+		"<button id=\"button-" + unique_id + "\" link=\"" + @link + "\">\n" +
+		"	<video id=\"" + unique_id + "\" height=\"" + @height.to_s + "\" width=\"" + @width.to_s + "\" loop>\n" +
+		"	  <source src=\"" + @url + "\" type=\"video/mp4\">\n" +
+		"	</video>\n" +
+		"</button>"
+	end
+
+	def html_img
+		"<a href=\"" + @link + "\" target=\"_blank\">" + 
+		"  <img src=\"" + @url + "\" height=\"" + @height.to_s + "\" width=\"" + @height.to_s + "\"></img>\n" +
+		"</a>"
+	end
+
+	def html
+		(@is_photo ? html_img : html_video)
+	end
+
+	def javascript
+		if @is_photo
+			return ''
+		end
+
+		"document.getElementById('button-" + unique_id + "').onclick = function () {\n" +
+		"	videoElement = document.getElementById('" + unique_id + "');\n" +
+		"	if (videoElement.currentTime > 0 && !videoElement.paused && !videoElement.ended) {\n" +
+		"		videoElement.pause();\n" +
+		"	} else {\n" +
+		"		videoElement.play();\n" +
+		"	}\n" +
+		"};\n" +
+		"document.getElementById('button-" + unique_id + "').ondblclick = function () {\n" +
+		"	var win = window.open('" + @link + "', '_blank');\n" +
+		"	win.focus();\n" +
+		"};\n"
 	end
 end
 
+# see http://instagram.com/developer/authentication/ to get your access token
+access_token = File.open(".access_token", "rb").read
+username = ARGV.first
+only_video = ARGV.fetch(1, false)
 
 if username != nil
-	fetcher = PhotoFetcher.new(username, access_token)
+	fetcher = PhotoFetcher.new(username, access_token, only_video)
 	fetcher.fetch
 end
 
