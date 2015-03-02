@@ -1,4 +1,5 @@
 require "net/http"
+require "optparse"
 require "uri"
 require "rubygems"
 require "json"
@@ -33,7 +34,7 @@ class PhotoFetcher
 
 		media = media_from_blob(blob)
 		@all_media.concat(media)
-		puts "now has #{@all_media.count} media"
+		puts "now has #{@all_media.count} media for #{@username}"
 
 		next_endpoint = next_endpoint(blob)
 		if next_endpoint
@@ -161,13 +162,26 @@ class InstagramMedia
 	end
 end
 
-# see http://instagram.com/developer/authentication/ to get your access token
-access_token = File.open(".access_token", "rb").read
-username = ARGV.first
-only_video = ARGV.fetch(1, false)
-
-if username != nil
+def fetch_all(username, only_video, access_token)
+	username = username.strip
 	fetcher = PhotoFetcher.new(username, access_token, only_video)
 	fetcher.fetch
 end
 
+options = {}
+OptionParser.new do |opts|
+	opts.on("-v", "--video") { options[:videos] = true }
+  	opts.on("-u USERNAMES", "--username USERNAMES", Array, "usernames") do |usernames|
+		options[:usernames] = usernames
+  	end
+end.parse!
+
+access_token = File.open(".access_token", "rb").read
+
+threads = []
+options[:usernames].each do |username|
+	threads << Thread.new do
+		fetch_all(username, options[:videos], access_token)
+	end
+end
+threads.each do |thread| thread.join end
