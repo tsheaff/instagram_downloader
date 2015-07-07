@@ -13,6 +13,8 @@ This will first fetch the raw metadata for all of this user's media.  It will th
 You can also pass multiple usernames, comma-separated, and they will each spawn their own thread and begin simultaneously fetching.
 
 Pass `-v` to only render the most popular videos.
+Pass `-c` to rank them chronologically rather than by popularity.
+Pass `-l 100` to limit to the top 100.
 
 Assets are saved in a parent directory called `media` which is git ignored, grouped in a directory matching the respective username.
 
