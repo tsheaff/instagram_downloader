@@ -8,10 +8,11 @@ require "fileutils"
 require "shellwords"
 
 class PhotoFetcher  
-	def initialize(username, access_token, only_video)
+	def initialize(username, access_token, only_video, chronological_order)
 		@username = username
 		@access_token = access_token
 		@only_video = only_video
+		@chronological_order = chronological_order
 
 		@all_media = []
 		@user_id = ''
@@ -25,7 +26,7 @@ class PhotoFetcher
 	def fetch_user_id
 		endpoint = 'https://api.instagram.com/v1/users/search?q=' + @username + '&access_token=' + @access_token
 		blob = response_blob(endpoint)
-		@user_id = blob["data"].first["id"]
+		@user_id = blob["data"].select{ |u| u["username"] == @username }.first["id"]
 	end
 
 	def fetch_media(endpoint = nil)
@@ -47,8 +48,13 @@ class PhotoFetcher
 
 	def generate_html
 		puts "generating html"
-		sorted_media = @all_media.sort { |a, b| b.like_count <=> a.like_count }
+
+		sorted_media = @all_media
+		if !@chronological_order
+			sorted_media = @all_media.sort { |a, b| b.like_count <=> a.like_count }
+		end
 		sorted_media = sorted_media.select { |a| !@only_video || !a.is_photo }
+		sorted_media = sorted_media.first(100)
 
 		parent_dir = 'media'
 		FileUtils.mkdir(parent_dir) if not File.directory?(parent_dir)
@@ -61,7 +67,7 @@ class PhotoFetcher
 		end
 		html += "<script>\n" + javascript + "\n</script>"
 
-		html_file_name = parent_dir + '/' + @username + (@only_video ? '-videos' : '') + '.html'
+		html_file_name = parent_dir + '/' + @username + (@only_video ? '-videos' : '') + (@chronological_order ? '-chron' : '') + '.html'
 		FileUtils.touch(html_file_name)
 		File.open(html_file_name, 'w') do |file|
 			file.write(html)
@@ -162,15 +168,16 @@ class InstagramMedia
 	end
 end
 
-def fetch_all(username, only_video, access_token)
+def fetch_all(username, only_video, chronological_order, access_token)
 	username = username.strip
-	fetcher = PhotoFetcher.new(username, access_token, only_video)
+	fetcher = PhotoFetcher.new(username, access_token, only_video, chronological_order)
 	fetcher.fetch
 end
 
 options = {}
 OptionParser.new do |opts|
 	opts.on("-v", "--video") { options[:videos] = true }
+	opts.on("-v", "--chron") { options[:chronological] = true }
   	opts.on("-u USERNAMES", "--username USERNAMES", Array, "usernames") do |usernames|
 		options[:usernames] = usernames
   	end
@@ -181,7 +188,7 @@ access_token = File.open(".access_token", "rb").read
 threads = []
 options[:usernames].each do |username|
 	threads << Thread.new do
-		fetch_all(username, options[:videos], access_token)
+		fetch_all(username, options[:videos], options[:chronological], access_token)
 	end
 end
 threads.each do |thread| thread.join end
