@@ -6,6 +6,7 @@ require "json"
 require "open-uri"
 require "fileutils"
 require "shellwords"
+require "time"
 
 class PhotoFetcher  
 	def initialize(username, access_token, only_video, chronological_order, limit)
@@ -15,6 +16,7 @@ class PhotoFetcher
 		@chronological_order = chronological_order
 		@limit = (limit != nil) ? limit : -1
 
+		@all_data = []
 		@all_media = []
 		@user_id = ''
 	end
@@ -28,6 +30,7 @@ class PhotoFetcher
 		endpoint = 'https://api.instagram.com/v1/users/search?q=' + @username + '&access_token=' + @access_token
 		blob = response_blob(endpoint)
 		@user_id = blob["data"].select{ |u| u["username"] == @username }.first["id"]
+		puts "@user_id is #{@user_id}"
 	end
 
 	def fetch_media(endpoint = nil)
@@ -35,15 +38,28 @@ class PhotoFetcher
 		blob = response_blob(endpoint)
 
 		media = media_from_blob(blob)
-		@all_media.concat(media)
-		puts "now has #{@all_media.count} media for #{@username}"
+
+		puts "now has #{media.count} media for #{@username}"
+
+		threads = []
+		media.each do |instagram_media|
+			threads << Thread.new do
+				instagram_media.fetch_and_save_photo("/Users/tylersheaffer/Desktop/#{@username}/")
+			end
+		end
+		threads.each do |thread| thread.join end
+
+		# @all_media.concat(media)
+		@all_data.concat(blob["data"])
 
 		next_endpoint = next_endpoint(blob)
 		if next_endpoint
 			fetch_media(next_endpoint)
 		else
 			puts "fetched all media"
-			generate_html
+			File.open("/Users/tylersheaffer/Desktop/#{@username}/all_metadata.json", 'w') do |f|
+				f.write(@all_data.to_json)
+			end
 		end
 	end
 
@@ -102,6 +118,7 @@ class InstagramMedia
 	def initialize(data)
 		video_info = data["videos"] != nil ? data["videos"]["standard_resolution"] : nil
 		photo_info = data["images"]["standard_resolution"]
+		@date_created = Time.at(data["created_time"].to_i).utc.iso8601
 		@is_photo = (video_info == nil)
 		@media_info = @is_photo ? photo_info : video_info
 
@@ -115,6 +132,15 @@ class InstagramMedia
 
 		@link = data["link"]
 		@like_count = data["likes"]["count"]
+	end
+
+	def fetch_and_save_photo(parent_dir)
+		file_type = File.extname(URI.parse(@url).path)
+		file_name = @date_created.gsub(":","_") + file_type
+		puts "fetching #{file_name}"
+		open(parent_dir + file_name, 'wb') do |file|
+			file << open(@url).read
+		end
 	end
 
 	def like_count
