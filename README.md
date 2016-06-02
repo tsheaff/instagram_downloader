@@ -18,6 +18,6 @@ Pass `-l 100` to limit to the top 100.
 
 Assets are saved in a parent directory called `media` which is git ignored, grouped in a directory matching the respective username.
 
-Save your access token in a file called `.access_token` or pass it as an argument.  Find documentation on getting your Instagram `access_token` [here](http://instagram.com/developer/authentication/).
+Save your access token in a file called `.access_token` or pass it as an argument.  Find documentation on getting your Instagram `access_token` [here](http://instagram.pixelunion.net/) or [here](http://instagram.com/developer/authentication/).
 
 You may need to run `bundle install` before everything works.  [Learn more here](http://bundler.io/).
