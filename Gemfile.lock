@@ -3,7 +3,7 @@ GEM
   specs:
     fileutils (0.7)
       rmagick (>= 2.13.1)
-    json (1.8.2)
+    json (2.3.0)
     rmagick (2.13.4)
 
 PLATFORMS
